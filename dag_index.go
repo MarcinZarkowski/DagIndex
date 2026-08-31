@@ -1,6 +1,7 @@
 package dagindex
 
 import (
+	"errors"
 	"sort"
 	"strings"
 )
@@ -62,7 +63,7 @@ func (r *DagIndex[T]) AddNodeToDags(dags []*Dag[T], node *Node[T]) {
 		}
 		seen[dag] = struct{}{}
 
-		if dag.addNode(node) || dag.hasExternalID(node.ExternalId) {
+		if err := dag.InsertNode(node); err == nil || errors.Is(err, ErrDuplicateNode) {
 			r.nodeDags[node.ExternalId][dag] = struct{}{}
 		}
 	}

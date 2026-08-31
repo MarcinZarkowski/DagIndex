@@ -13,13 +13,14 @@ Each DAG holds chronologically ordered events as nodes. DAGs are indexed by part
 ## Usage
 
 ```go
-import "dagIndex"
+import dagindex "github.com/MarcinZarkowski/DagIndex"
 
 // Build a DAG
-head := dagIndex.NewNode[MyEvent]()
-d := dagIndex.NewDag(head)
-d.AddRootNode(&dagIndex.Node[MyEvent]{
+head := dagindex.NewNode[MyEvent]()
+d := dagindex.NewDag(head, "MSFT", "NVDA")
+d.InsertNode(&dagindex.Node[MyEvent]{
     ExternalId: "evt-1",
+    StartTime:  "2026-01-01",
     EndTime:    "2026-01-01",
     Value:      myEvent,
 })
@@ -28,11 +29,11 @@ d.AddRootNode(&dagIndex.Node[MyEvent]{
 frontier := d.GetLatestBefore("2026-01-15")
 
 // Index and search DAGs by entity
-idx := dagIndex.NewDagIndex[MyEvent]()
-idx.AddDag("tech", d, []string{"MSFT", "NVDA"})
+idx := dagindex.NewDagIndex[MyEvent]()
+idx.AddDag(d)
 results := idx.SearchDags([]string{"NVDA"}, 0.3)
 ```
 
 ## Status
 
-Early stage. Core graph structures and entity-based lookup are in place. Node insertion, cycle prevention, parent tracking, and shared-node support are planned.
+Early stage. Core graph structures, temporal insertion, entity-based lookup, and shared-node indexing are in place. DAG-owned edge storage is still needed before shared nodes can safely have different surrounding edges in different DAGs.

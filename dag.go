@@ -1,6 +1,15 @@
 package dagindex
 
-import "sort"
+import (
+	"errors"
+	"sort"
+)
+
+var (
+	ErrInvalidNode   = errors.New("invalid node")
+	ErrDuplicateNode = errors.New("node already exists")
+	ErrCycle         = errors.New("insertion would create a cycle")
+)
 
 type Node[T any] struct {
 	ID         string
@@ -94,6 +103,20 @@ func (dag *Dag[T]) addNode(newNode *Node[T]) bool {
 	}
 	newNode.Nexts = successors
 	return true
+}
+
+// InsertNode adds a node to the DAG according to its temporal position.
+func (dag *Dag[T]) InsertNode(newNode *Node[T]) error {
+	if dag == nil || dag.head == nil || !hasValidTimes(newNode) || newNode.ExternalId == "" {
+		return ErrInvalidNode
+	}
+	if dag.hasNode(newNode) || dag.hasExternalID(newNode.ExternalId) {
+		return ErrDuplicateNode
+	}
+	if !dag.addNode(newNode) {
+		return ErrCycle
+	}
+	return nil
 }
 
 func (dag *Dag[T]) addRootNode(newNode *Node[T]) bool {
@@ -228,6 +251,22 @@ func (dag *Dag[T]) getLatestBefore(thresholdStart string) map[*Node[T]]struct{} 
 			result[node] = struct{}{}
 		}
 	}
+	return result
+}
+
+// GetLatestBefore returns the frontier nodes ending at or before thresholdStart.
+func (dag *Dag[T]) GetLatestBefore(thresholdStart string) []*Node[T] {
+	frontier := dag.getLatestBefore(thresholdStart)
+	result := make([]*Node[T], 0, len(frontier))
+	for node := range frontier {
+		result = append(result, node)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].EndTime == result[j].EndTime {
+			return result[i].ExternalId < result[j].ExternalId
+		}
+		return result[i].EndTime < result[j].EndTime
+	})
 	return result
 }
 
