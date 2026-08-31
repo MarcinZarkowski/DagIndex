@@ -1,4 +1,4 @@
-# dagIndex
+# DagIndex
 
 A Go library for maintaining multiple directed acyclic graphs (DAGs) tied to entities, representing temporal sequences of events.
 
@@ -34,6 +34,22 @@ idx.AddDag(d)
 results := idx.SearchDags([]string{"NVDA"}, 0.3)
 ```
 
+Entity types can be weighted when the index is created. Unspecified types
+default to `1.0`:
+
+```go
+idx := dagindex.NewDagIndex[MyEvent](map[string]float64{
+    "ticker":   10,
+    "industry": 2,
+    "macro":    1,
+})
+```
+
+DAG entities are fixed anchors declared when the DAG is created. Use the new
+event's extracted entities with `SearchDags` to select candidates, then add the
+event to those DAGs with `AddNodeToDags`. Adding an event never broadens a
+DAG's anchors, preventing transitive entity drift.
+
 ## Status
 
-Early stage. Core graph structures, temporal insertion, entity-based lookup, and shared-node indexing are in place. DAG-owned edge storage is still needed before shared nodes can safely have different surrounding edges in different DAGs.
+Early stage. Core graph structures, temporal insertion, entity-based lookup, and shared-node indexing are in place. Shared nodes accumulate successor edges from every DAG in which they appear.

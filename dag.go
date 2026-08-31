@@ -28,6 +28,7 @@ type Dag[T any] struct {
 	entities map[string]struct{}
 }
 
+// NewDag creates a DAG with fixed entity anchors used for candidate matching.
 func NewDag[T any](node *Node[T], entityIDs ...string) *Dag[T] {
 	return &Dag[T]{head: node, entities: normalizeEntities(entityIDs)}
 }
@@ -39,6 +40,7 @@ func (d *Dag[T]) HeadNode() *Node[T] {
 	return d.head
 }
 
+// Entities returns the DAG's fixed anchor entities.
 func (d *Dag[T]) Entities() []string {
 	if d == nil {
 		return nil
@@ -101,7 +103,7 @@ func (dag *Dag[T]) addNode(newNode *Node[T]) bool {
 		}
 		beforeNode.Nexts = appendUniqueNodes(nexts, newNode)
 	}
-	newNode.Nexts = successors
+	newNode.Nexts = appendUniqueNodes(newNode.Nexts, successors...)
 	return true
 }
 
@@ -133,7 +135,7 @@ func (dag *Dag[T]) addRootNode(newNode *Node[T]) bool {
 		roots = appendUniqueNodes(roots, root)
 	}
 	dag.head.Nexts = appendUniqueNodes(roots, newNode)
-	newNode.Nexts = successors
+	newNode.Nexts = appendUniqueNodes(newNode.Nexts, successors...)
 	return true
 }
 

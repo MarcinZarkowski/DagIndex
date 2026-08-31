@@ -10,16 +10,27 @@ import (
 // not perform KNN or reranking; callers should use those systems for duplicate
 // detection before adding a new event to a DAG.
 type DagIndex[T any] struct {
-	dags       map[*Dag[T]]struct{}
-	entityDAGs map[string]map[*Dag[T]]struct{}
-	nodeDags   map[string]map[*Dag[T]]struct{}
+	dags          map[*Dag[T]]struct{}
+	entityDAGs    map[string]map[*Dag[T]]struct{}
+	nodeDags      map[string]map[*Dag[T]]struct{}
+	entityWeights map[string]float64
 }
 
-func NewDagIndex[T any]() *DagIndex[T] {
+func NewDagIndex[T any](weights ...map[string]float64) *DagIndex[T] {
+	entityWeights := map[string]float64{}
+	for _, weightSet := range weights {
+		for entityType, weight := range weightSet {
+			entityType = strings.ToUpper(strings.TrimSuffix(strings.TrimSpace(entityType), ":"))
+			if entityType != "" {
+				entityWeights[entityType] = weight
+			}
+		}
+	}
 	return &DagIndex[T]{
-		dags:       map[*Dag[T]]struct{}{},
-		entityDAGs: map[string]map[*Dag[T]]struct{}{},
-		nodeDags:   map[string]map[*Dag[T]]struct{}{},
+		dags:          map[*Dag[T]]struct{}{},
+		entityDAGs:    map[string]map[*Dag[T]]struct{}{},
+		nodeDags:      map[string]map[*Dag[T]]struct{}{},
+		entityWeights: entityWeights,
 	}
 }
 
@@ -31,6 +42,7 @@ func (r *DagIndex[T]) AddDag(dag *Dag[T]) {
 		r.dags = map[*Dag[T]]struct{}{}
 		r.entityDAGs = map[string]map[*Dag[T]]struct{}{}
 		r.nodeDags = map[string]map[*Dag[T]]struct{}{}
+		r.entityWeights = map[string]float64{}
 	}
 	r.dags[dag] = struct{}{}
 	for entity := range dag.entities {
@@ -42,6 +54,7 @@ func (r *DagIndex[T]) AddDag(dag *Dag[T]) {
 }
 
 // AddNodeToDags adds the same node to each DAG and records its membership.
+// A DAG's entity set remains fixed after it is created.
 func (r *DagIndex[T]) AddNodeToDags(dags []*Dag[T], node *Node[T]) {
 	if r == nil || node == nil || node.ExternalId == "" {
 		return
@@ -64,6 +77,7 @@ func (r *DagIndex[T]) AddNodeToDags(dags []*Dag[T], node *Node[T]) {
 		seen[dag] = struct{}{}
 
 		if err := dag.InsertNode(node); err == nil || errors.Is(err, ErrDuplicateNode) {
+			r.AddDag(dag)
 			r.nodeDags[node.ExternalId][dag] = struct{}{}
 		}
 	}
@@ -88,9 +102,6 @@ func (r *DagIndex[T]) SearchDags(entityIDs []string, minOverlap float64) []*Dag[
 	if r == nil {
 		return nil
 	}
-	if minOverlap < 0 {
-		minOverlap = 0
-	}
 	query := normalizeEntities(entityIDs)
 	candidates := map[*Dag[T]]struct{}{}
 	for entity := range query {
@@ -104,7 +115,7 @@ func (r *DagIndex[T]) SearchDags(entityIDs []string, minOverlap float64) []*Dag[
 	}
 	scores := make([]scored, 0, len(candidates))
 	for dag := range candidates {
-		score := entityOverlap(query, dag.entities)
+		score := weightedEntityOverlap(query, dag.entities, r.entityWeights)
 		if score >= minOverlap {
 			scores = append(scores, scored{dag, score})
 		}
@@ -155,19 +166,36 @@ func NormalizeEntity(value string) string {
 	return strings.ToUpper(namespace) + ":" + strings.ToUpper(entityValue)
 }
 
-func entityOverlap(a, b map[string]struct{}) float64 {
+func weightedEntityOverlap(a, b map[string]struct{}, weights map[string]float64) float64 {
 	if len(a) == 0 || len(b) == 0 {
 		return 0
 	}
-	intersection := 0
-	for id := range a {
-		if _, ok := b[id]; ok {
-			intersection++
+	intersection, union := 0.0, 0.0
+	for entity := range a {
+		weight := entityWeight(entity, weights)
+		if _, ok := b[entity]; ok {
+			intersection += weight
+		}
+		union += weight
+	}
+	for entity := range b {
+		if _, ok := a[entity]; !ok {
+			union += entityWeight(entity, weights)
 		}
 	}
-	union := len(a) + len(b) - intersection
 	if union == 0 {
 		return 0
 	}
-	return float64(intersection) / float64(union)
+	return intersection / union
+}
+
+func entityWeight(entity string, weights map[string]float64) float64 {
+	if weights == nil {
+		return 1
+	}
+	entityType := strings.SplitN(entity, ":", 2)[0]
+	if weight, ok := weights[strings.ToUpper(entityType)]; ok {
+		return weight
+	}
+	return 1
 }
